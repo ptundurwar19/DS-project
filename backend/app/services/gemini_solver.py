@@ -1,9 +1,11 @@
 """
-Gemini Solver — Uses the new google.genai SDK with gemini-2.5-flash model.
+AI Solver — Uses the google.genai SDK with Gemini models.
 Reads GEMINI_API_KEY from backend/.env automatically.
+Neuro-DS v2.0 — Professional prompt, no syllabus references.
 """
 import json
 import os
+import time
 from pathlib import Path
 from dotenv import load_dotenv
 from google import genai
@@ -13,41 +15,50 @@ from typing import Dict, Any
 _backend_dir = Path(__file__).resolve().parent.parent.parent
 load_dotenv(_backend_dir / ".env")
 
-SYLLABUS_CONTEXT = """
-You are "Neuro-DS Oracle", an expert Data Structures AI designed to analyze problem statements and recommend the absolute best data structure from a specific Computer Science college syllabus.
+AI_SYSTEM_PROMPT = """
+You are "Neuro-DS Oracle v2.0", a world-class AI expert in advanced data structures. You analyze problem statements and recommend the optimal data structure based on performance requirements, access patterns, and constraints.
 
-Here is the ALLOWED SYLLABUS of Data Structures. You MUST choose the winner and alternatives ONLY from this list:
+You have deep expertise across the following data structure families:
 
-- Unit 1: Threaded Binary Tree, AVL Tree, Red-Black Tree, Heap Tree, Huffman Tree, B-Tree, B+-Tree, Splay Tree, Van Emde Boas Tree, Fusion Tree, Dynamic Finger Search Trees.
-- Unit 2: Double Ended Priority queues, Leftist Trees, Binomial Heaps, Fibonacci Heaps, Skew Heaps, Pairing Heaps.
-- Unit 3: DAWG, Position Heaps, Tries, Compressed Tries, Suffix Trees, Suffix Arrays.
-- Unit 4: Skip Lists, Treap.
-- Unit 5: Quad Trees, Octrees, Interval Trees, Segment Trees, Range Trees, Priority Search Trees, BSP Trees, R-Trees.
-- Unit 6: Big Table, Disjoint Set Union-Find, Concurrent Data Structures, Succinct Dictionaries, Persistent Data Structures, Cache-Oblivious Data Structures.
+**Trees & Search Structures:**
+Threaded Binary Tree, AVL Tree, Red-Black Tree, B-Tree, B+-Tree, Splay Tree
 
-Based on the user's problem statement, you must return a strict JSON response with the following schema exactly (no markdown, no commentary, just raw JSON):
+**Priority Queues & Heaps:**
+Double-Ended Priority Queues, Leftist Trees, Binomial Heaps, Fibonacci Heaps, Skew Heaps, Pairing Heaps, Min/Max Binary Heaps
+
+**String Data Structures:**
+DAWG (Directed Acyclic Word Graph), Position Heaps, Tries, Compressed Tries (Patricia), Suffix Trees, Suffix Arrays
+
+**Randomized Structures:**
+Skip Lists, Treaps
+
+Based on the user's problem, return a strict JSON response with this exact schema (no markdown, no commentary, ONLY raw JSON):
 
 {
-  "identified_problem": "A 1-sentence summary of what the user is trying to solve.",
-  "winner": "The EXACT name of the best data structure from the syllabus.",
-  "justification": "A detailed, professional paragraph explaining exactly why this is the best choice for this specific problem.",
+  "identified_problem": "A 1-sentence summary of the core problem.",
+  "winner": "The exact name of the best data structure.",
+  "confidence": 0.85,
+  "justification": "A detailed, professional paragraph explaining exactly why this is the best choice.",
+  "time_complexity": "e.g., O(log n) average, O(log n) worst",
+  "space_complexity": "e.g., O(n)",
+  "benchmark_suggestion": ["ds_id_1", "ds_id_2", "ds_id_3"],
   "alternatives": [
     {
-      "name": "Alternative Data Structure 1 (from syllabus)",
-      "time_complexity": "e.g., O(log N) average, O(N) worst",
+      "name": "Alternative Data Structure 1",
+      "time_complexity": "e.g., O(log n) average, O(N) worst",
       "space_complexity": "e.g., O(N)",
       "advantages": "Why consider this?",
       "limitations": "Why did it lose to the winner?"
     },
     {
-      "name": "Alternative Data Structure 2 (from syllabus)",
+      "name": "Alternative Data Structure 2",
       "time_complexity": "...",
       "space_complexity": "...",
       "advantages": "...",
       "limitations": "..."
     },
     {
-      "name": "Alternative Data Structure 3 (from syllabus)",
+      "name": "Alternative Data Structure 3",
       "time_complexity": "...",
       "space_complexity": "...",
       "advantages": "...",
@@ -56,12 +67,17 @@ Based on the user's problem statement, you must return a strict JSON response wi
   ]
 }
 
+For the "benchmark_suggestion" field, use these exact IDs for data structures the user should benchmark:
+avl, rbt, splay, threaded_bst, btree, bplus_tree, skip_list, treap, min_heap, max_heap, fibonacci_heap, binomial_heap, leftist_tree, skew_heap, pairing_heap, depq, trie, compressed_trie, dawg, suffix_tree, suffix_array, position_heap
+
+Pick 3-5 IDs that are most relevant to compare for the given problem.
+
 DO NOT wrap the JSON in ```json blocks. Return ONLY the raw JSON string.
 """
 
 
-def solve_with_gemini(problem_text: str) -> Dict[str, Any]:
-    """Calls the new google.genai SDK to analyze the problem text against the syllabus."""
+def solve_with_ai(problem_text: str) -> Dict[str, Any]:
+    """Calls the google.genai SDK to analyze the problem text."""
     raw_text = ""
     try:
         api_key = os.environ.get("GEMINI_API_KEY")
@@ -74,12 +90,11 @@ def solve_with_gemini(problem_text: str) -> Dict[str, Any]:
         # Initialize the new client
         client = genai.Client(api_key=api_key)
 
-        prompt = f"{SYLLABUS_CONTEXT}\n\nUSER PROBLEM STATEMENT:\n{problem_text}\n\nRETURN RAW JSON NOW:"
+        prompt = f"{AI_SYSTEM_PROMPT}\n\nUSER PROBLEM STATEMENT:\n{problem_text}\n\nRETURN RAW JSON NOW:"
 
         # Try models in order — fallback if one is overloaded
         models = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash"]
         last_error = None
-        import time
 
         for model_name in models:
             success = False
@@ -97,13 +112,13 @@ def solve_with_gemini(problem_text: str) -> Dict[str, Any]:
                     if "503" in str(model_err) or "429" in str(model_err):
                         time.sleep(1)  # brief pause before retry
                     else:
-                        break  # breaking out of retry for other errors (like 404)
+                        break  # breaking out of retry for other errors
             if success:
                 break  # Success - break out of models loop
         else:
             # All models failed
             return {
-                "error": f"All Gemini models unavailable: {last_error}",
+                "error": f"All AI models unavailable: {last_error}",
                 "status": "failed"
             }
 
@@ -115,7 +130,9 @@ def solve_with_gemini(problem_text: str) -> Dict[str, Any]:
         if raw_text.endswith("```"):
             raw_text = raw_text[:-3]
 
-        return json.loads(raw_text.strip())
+        result = json.loads(raw_text.strip())
+        result["status"] = "success"
+        return result
 
     except json.JSONDecodeError:
         return {
@@ -127,3 +144,8 @@ def solve_with_gemini(problem_text: str) -> Dict[str, Any]:
             "error": str(e),
             "status": "failed"
         }
+
+
+# Keep backward compatibility with old function name
+def solve_with_gemini(problem_text: str) -> Dict[str, Any]:
+    return solve_with_ai(problem_text)

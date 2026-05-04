@@ -1,57 +1,50 @@
 import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
-import PredictionCard from '../components/PredictionCard'
-import BenchmarkChart from '../components/BenchmarkChart'
-import ParetoChart from '../components/ParetoChart'
-import ExplainPanel from '../components/ExplainPanel'
-import CodeExport from '../components/CodeExport'
 import NLPResults from '../components/NLPResults'
+import BenchmarkResults from '../components/BenchmarkResults'
+import ExportPanel from '../components/ExportPanel'
 
 const container = {
   hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: { staggerChildren: 0.1 },
-  },
+  show: { opacity: 1, transition: { staggerChildren: 0.1 } },
 }
-
 const item = {
   hidden: { opacity: 0, y: 20 },
   show: { opacity: 1, y: 0, transition: { duration: 0.5 } },
 }
 
-export default function Dashboard({ results }) {
+export default function Dashboard({ results, benchmarkResults }) {
   const navigate = useNavigate()
 
-  if (!results) {
+  const hasAI = results && results.prediction
+  const hasBenchmark = benchmarkResults && benchmarkResults.length > 0
+
+  if (!hasAI && !hasBenchmark) {
     return (
       <div className="flex flex-col items-center justify-center py-32 space-y-6">
         <div className="text-6xl">🧠</div>
         <h2 className="text-2xl font-bold text-white">No Results Yet</h2>
-        <p className="text-gray-400">Run a search first to see your dashboard.</p>
-        <button onClick={() => navigate('/')} className="btn-primary">
-          ← Go to Home
-        </button>
+        <p className="text-gray-400">Run an AI analysis or benchmark to see results here.</p>
+        <button onClick={() => navigate('/')} className="btn-primary">← Go to Home</button>
       </div>
     )
   }
 
-  const { prediction, benchmark, features, ai_correct, metadata } = results
-  const isNLPMode = metadata?.mode === 'nlp_gemini'
+  const prediction = hasAI ? results.prediction : null
 
   return (
-    <motion.div
-      variants={container}
-      initial="hidden"
-      animate="show"
-      className="space-y-8"
-    >
+    <motion.div variants={container} initial="hidden" animate="show" className="space-y-8">
       {/* Header */}
       <motion.div variants={item} className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-white">Results Dashboard</h1>
           <p className="text-gray-400 mt-1">
-            {isNLPMode ? 'Natural Language Analysis' : 'Prediction vs. Ground Truth Verification'}
+            {hasAI && hasBenchmark
+              ? 'AI Analysis + Live Benchmark Verification'
+              : hasAI
+                ? 'AI-Powered Analysis'
+                : 'Live Benchmark Results'
+            }
           </p>
         </div>
         <button onClick={() => navigate('/')} className="btn-secondary whitespace-nowrap">
@@ -59,44 +52,30 @@ export default function Dashboard({ results }) {
         </button>
       </motion.div>
 
-      {isNLPMode ? (
-        /* --- NLP NLP UI --- */
+      {/* AI Results Section */}
+      {hasAI && (
         <motion.div variants={item}>
           <NLPResults prediction={prediction} />
         </motion.div>
-      ) : (
-        /* --- Old Setup (C++ Engine) UI --- */
-        <>
-          <motion.div variants={item}>
-            <PredictionCard prediction={prediction} aiCorrect={ai_correct} />
-          </motion.div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <motion.div variants={item}>
-              <BenchmarkChart benchmark={benchmark} winner={prediction.winner} />
-            </motion.div>
-            <motion.div variants={item}>
-              <ParetoChart benchmark={benchmark} winner={prediction.winner} />
-            </motion.div>
-          </div>
-
-          <motion.div variants={item}>
-            <ExplainPanel prediction={prediction} features={features} />
-          </motion.div>
-
-          <motion.div variants={item}>
-            <CodeExport winner={prediction.winner} />
-          </motion.div>
-
-          {metadata && (
-            <motion.div variants={item} className="glass-card p-4 text-xs text-gray-500 flex items-center justify-between">
-              <span>Engine: {metadata.compiler || 'N/A'}</span>
-              <span>Dataset: {metadata.dataset_size?.toLocaleString() || 'N/A'} operations</span>
-              {metadata.error && <span className="text-amber-400">⚠️ {metadata.error}</span>}
-            </motion.div>
-          )}
-        </>
       )}
+
+      {/* Benchmark Results Section */}
+      {hasBenchmark && (
+        <motion.div variants={item}>
+          <BenchmarkResults
+            results={benchmarkResults}
+            aiWinner={prediction?.winner}
+          />
+        </motion.div>
+      )}
+
+      {/* Export Panel */}
+      <motion.div variants={item}>
+        <ExportPanel
+          results={benchmarkResults}
+          aiResult={prediction}
+        />
+      </motion.div>
     </motion.div>
   )
 }

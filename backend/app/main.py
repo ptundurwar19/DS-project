@@ -10,8 +10,8 @@ from app.routers import simulate, history
 
 app = FastAPI(
     title="Neuro-DS API",
-    description="AI-Driven Data Structure Oracle — Backend API",
-    version="1.0.0"
+    description="AI-Powered Data Structure Intelligence Platform — v3.0",
+    version="3.0.0"
 )
 
 # CORS — allow React dev server (localhost:5173)

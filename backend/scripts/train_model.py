@@ -1,24 +1,20 @@
 """
 Model Training Script
 =====================
-Generates training data using a HYBRID approach:
-  1. Runs C++ engine benchmarks for real ground-truth labels
-  2. Supplements with domain-knowledge synthetic labels to ensure
-     all 4 data structures are well-represented
+Generates synthetic training data using domain-knowledge labels.
+Trains a Random Forest classifier that can distinguish between
+all 4 data structures: AVL, Red-Black, Splay, and Skip List.
 
-This fixes the issue where the raw C++ benchmarks often favor Red-Black
-Tree due to its constant-factor advantages, causing the model to always
-predict 'redblack' regardless of input.
+The key insight: raw C++ benchmarks often favor Red-Black Tree due to
+constant-factor advantages, causing the model to always predict 'redblack'.
+This script uses theoretical domain knowledge to create balanced training
+data that reflects WHEN each data structure is the optimal choice.
 
 Usage:
     python scripts/train_model.py
-
-Prerequisites:
-    - C++ engine must be compiled first (cd engine && mkdir build && cd build && cmake .. && cmake --build .)
 """
 import os
 import sys
-import json
 import random
 import numpy as np
 import pandas as pd
@@ -27,15 +23,14 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
 import joblib
 
-# Add parent directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
-from app.services.workload_gen import generate_workload
-from app.services.feature_extract import extract_features
-from app.services.engine_runner import run_engine, cleanup_workload
-
 
 DS_LABELS = ["avl", "redblack", "splay", "skiplist"]
+
+FEATURE_NAMES = [
+    "read_ratio", "write_ratio", "delete_ratio",
+    "dataset_size", "sortedness", "duplicate_ratio",
+    "temporal_locality", "key_spread",
+]
 
 
 def _domain_label(features: dict) -> str:
@@ -83,97 +78,86 @@ def _domain_label(features: dict) -> str:
     return "redblack"
 
 
-# Training configurations: vary parameters to create diverse workloads
-TRAINING_CONFIGS = []
-
-# Generate a comprehensive grid of configurations
-for size in [1000, 5000, 10000, 25000, 50000]:
-    for read_r in [0.1, 0.3, 0.5, 0.7, 0.9]:
-        for sorted_pct in [0.0, 0.3, 0.5, 0.7, 0.9]:
-            for temp_loc in [0.0, 0.3, 0.5, 0.7, 0.9]:
-                write_r = (1.0 - read_r) * 0.7
-                delete_r = (1.0 - read_r) * 0.3
-                TRAINING_CONFIGS.append({
-                    "dataset_size": size,
-                    "read_ratio": read_r,
-                    "write_ratio": write_r,
-                    "delete_ratio": delete_r,
-                    "sortedness": sorted_pct,
-                    "temporal_locality": temp_loc,
-                })
-
-
-def generate_training_data(num_samples: int = None, use_engine: bool = False) -> pd.DataFrame:
+def generate_synthetic_features(num_samples: int = 2000) -> pd.DataFrame:
     """
-    Generate training data using a hybrid approach:
-      - If use_engine=True AND engine is available, use C++ benchmark results
-      - Always supplement with domain-knowledge labels to ensure all 4 DS are represented
+    Generate synthetic feature vectors with domain-knowledge labels.
+    This is FAST because it doesn't need to run the C++ engine.
 
-    Returns:
-        DataFrame with feature columns + 'winner' label column
+    Generates diverse combinations of workload parameters with some noise
+    to make the decision boundaries realistic.
     """
-    configs = TRAINING_CONFIGS
-    if num_samples and num_samples < len(configs):
-        configs = random.sample(configs, num_samples)
-
     rows = []
-    total = len(configs)
+    random.seed(42)
+    np.random.seed(42)
 
-    engine_available = use_engine and os.path.isfile(
-        os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "app", "models", "..", "..", "engine", "build", "engine.exe"))
-    )
+    # Systematic grid
+    sizes_log = [2.5, 3.0, 3.5, 4.0, 4.5, 5.0]  # log10 scale
+    read_ratios = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+    sortedness_vals = [0.0, 0.15, 0.3, 0.45, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+    locality_vals = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 
-    for i, cfg in enumerate(configs):
-        if (i + 1) % 50 == 0 or i == 0:
-            print(f"  [{i+1}/{total}] size={cfg['dataset_size']}, "
-                  f"read={cfg['read_ratio']:.1f}, sorted={cfg['sortedness']:.1f}, "
-                  f"locality={cfg['temporal_locality']:.1f}")
+    count = 0
+    for size_log in sizes_log:
+        for read_r in read_ratios:
+            for sorted_pct in sortedness_vals:
+                for temp_loc in locality_vals:
+                    write_r = (1.0 - read_r) * random.uniform(0.5, 0.85)
+                    delete_r = 1.0 - read_r - write_r
 
-        workload_path = None
-        try:
-            # Generate workload
-            workload_path, operations = generate_workload(**cfg)
+                    # Add realistic noise to features
+                    dup_ratio = random.uniform(0.0, 0.3)
+                    key_spread = random.uniform(1.0, 20.0)
 
-            # Extract features
-            features = extract_features(operations, cfg)
+                    features = {
+                        "read_ratio": round(read_r + np.random.normal(0, 0.02), 4),
+                        "write_ratio": round(write_r + np.random.normal(0, 0.02), 4),
+                        "delete_ratio": round(max(0, delete_r + np.random.normal(0, 0.01)), 4),
+                        "dataset_size": round(size_log + np.random.normal(0, 0.1), 4),
+                        "sortedness": round(max(0, min(1, sorted_pct + np.random.normal(0, 0.03))), 4),
+                        "duplicate_ratio": round(dup_ratio, 4),
+                        "temporal_locality": round(max(0, min(1, temp_loc + np.random.normal(0, 0.03))), 4),
+                        "key_spread": round(key_spread, 4),
+                    }
 
-            # Determine winner label
-            winner = None
+                    winner = _domain_label(features)
+                    rows.append({**features, "winner": winner})
+                    count += 1
 
-            if engine_available:
-                try:
-                    result = run_engine(workload_path)
-                    benchmark = result.get("results", {})
-                    if benchmark and all(v.get("time_us", 0) > 0 for v in benchmark.values()):
-                        winner = min(benchmark, key=lambda k: benchmark[k].get("time_us", float("inf")))
-                except Exception:
-                    pass
+                    if count >= num_samples:
+                        break
+                if count >= num_samples:
+                    break
+            if count >= num_samples:
+                break
+        if count >= num_samples:
+            break
 
-            # Fallback / supplement: use domain knowledge
-            if winner is None:
-                winner = _domain_label(features)
+    # Add extra random samples to fill up to num_samples
+    while len(rows) < num_samples:
+        read_r = random.uniform(0.05, 0.95)
+        write_r = random.uniform(0, 1.0 - read_r)
+        delete_r = 1.0 - read_r - write_r
 
-            row = {**features, "winner": winner}
-            rows.append(row)
+        features = {
+            "read_ratio": round(read_r, 4),
+            "write_ratio": round(write_r, 4),
+            "delete_ratio": round(delete_r, 4),
+            "dataset_size": round(random.uniform(2.0, 5.5), 4),
+            "sortedness": round(random.uniform(0, 1), 4),
+            "duplicate_ratio": round(random.uniform(0, 0.4), 4),
+            "temporal_locality": round(random.uniform(0, 1), 4),
+            "key_spread": round(random.uniform(0.5, 25.0), 4),
+        }
 
-        except Exception as e:
-            print(f"    SKIP — {e}")
-            continue
-
-        finally:
-            if workload_path:
-                cleanup_workload(workload_path)
+        winner = _domain_label(features)
+        rows.append({**features, "winner": winner})
 
     return pd.DataFrame(rows)
 
 
 def train_model(df: pd.DataFrame) -> None:
     """Train a Random Forest classifier and save it."""
-    feature_cols = [
-        "read_ratio", "write_ratio", "delete_ratio",
-        "dataset_size", "sortedness", "duplicate_ratio",
-        "temporal_locality", "key_spread",
-    ]
+    feature_cols = FEATURE_NAMES
 
     X = df[feature_cols].values
     y = df["winner"].values
@@ -198,7 +182,7 @@ def train_model(df: pd.DataFrame) -> None:
         min_samples_leaf=3,
         random_state=42,
         n_jobs=-1,
-        class_weight="balanced",  # Handle any remaining class imbalance
+        class_weight="balanced",
     )
     clf.fit(X_train, y_train)
 
@@ -213,6 +197,21 @@ def train_model(df: pd.DataFrame) -> None:
         bar = "█" * int(imp * 50)
         print(f"  {name:25s} {imp:.4f}  {bar}")
 
+    # Quick sanity check: test a few scenarios
+    print("\n--- Sanity Check Predictions ---")
+    test_cases = [
+        ("High read (90r/7w/3d)",      [0.9, 0.07, 0.03, 4.0, 0.0, 0.0, 0.0, 10.0]),
+        ("High temporal locality",      [0.5, 0.35, 0.15, 4.0, 0.0, 0.0, 0.8, 10.0]),
+        ("High sortedness",             [0.5, 0.35, 0.15, 4.0, 0.85, 0.0, 0.0, 10.0]),
+        ("High write/delete",           [0.1, 0.63, 0.27, 4.0, 0.0, 0.0, 0.0, 10.0]),
+        ("Balanced default",            [0.5, 0.35, 0.15, 4.0, 0.3, 0.0, 0.3, 10.0]),
+    ]
+    for name, feats in test_cases:
+        proba = clf.predict_proba([feats])[0]
+        pred = clf.classes_[np.argmax(proba)]
+        conf = max(proba)
+        print(f"  {name:30s} => {pred:12s} ({conf:.1%})")
+
     # Save model
     model_dir = os.path.join(os.path.dirname(__file__), "..", "app", "models")
     os.makedirs(model_dir, exist_ok=True)
@@ -226,8 +225,8 @@ if __name__ == "__main__":
     print("  Neuro-DS Model Training Pipeline")
     print("=" * 60)
 
-    print("\n[1/2] Generating training data (domain-knowledge labels)...")
-    df = generate_training_data(num_samples=300, use_engine=False)
+    print("\n[1/2] Generating synthetic training data...")
+    df = generate_synthetic_features(num_samples=5000)
 
     if len(df) < 10:
         print("\nERROR: Not enough training data generated.")
