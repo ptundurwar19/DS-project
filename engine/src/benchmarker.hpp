@@ -27,11 +27,11 @@ public:
         std::function<std::pair<size_t, size_t>()> operation
     ) {
         auto start = std::chrono::high_resolution_clock::now();
-        auto [memory, ops] = operation();
+        std::pair<size_t, size_t> result = operation();
         auto end = std::chrono::high_resolution_clock::now();
 
         long long duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
 
-        return BenchmarkResult{name, duration, memory, ops};
+        return BenchmarkResult{name, duration, result.first, result.second};
     }
 };

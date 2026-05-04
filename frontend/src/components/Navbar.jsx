@@ -2,7 +2,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 
 const navLinks = [
-  { path: '/', label: 'Oracle', icon: '🧠' },
+  { path: '/', label: 'Home', icon: '🏠' },
   { path: '/dashboard', label: 'Dashboard', icon: '📊' },
   { path: '/history', label: 'History', icon: '📜' },
 ]

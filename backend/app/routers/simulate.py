@@ -13,6 +13,7 @@ from app.services.feature_extract import extract_features, features_to_array
 from app.services.predictor import Predictor
 from app.services.engine_runner import run_engine, cleanup_workload
 from app.services.history_db import save_run
+from app.services.gemini_solver import solve_with_gemini
 
 router = APIRouter()
 
@@ -21,7 +22,11 @@ predictor = Predictor()
 
 
 class WorkloadConfig(BaseModel):
-    """Request body for workload simulation."""
+    """Request body for workload simulation or NLP problem solving."""
+    nlp_mode: bool = False
+    problem_text: Optional[str] = None
+    
+    # Old slider parameters
     dataset_size: int = Field(default=10000, ge=100, le=500000)
     read_ratio: float = Field(default=0.5, ge=0.0, le=1.0)
     write_ratio: float = Field(default=0.4, ge=0.0, le=1.0)
@@ -35,9 +40,9 @@ class WorkloadConfig(BaseModel):
 class SimulateResponse(BaseModel):
     """Full response with prediction and benchmark results."""
     prediction: dict
-    benchmark: dict
-    features: dict
-    ai_correct: bool
+    benchmark: Optional[dict] = None
+    features: Optional[dict] = None
+    ai_correct: Optional[bool] = None
     metadata: Optional[dict] = None
 
 
@@ -45,12 +50,21 @@ class SimulateResponse(BaseModel):
 async def simulate(config: WorkloadConfig):
     """
     Run the full Neuro-DS pipeline:
-    1. Generate synthetic workload
-    2. Extract features
-    3. ML prediction
-    4. C++ engine benchmark
-    5. Compare prediction vs ground truth
+    Either NLP Problem Analysis OR Workload Benchmarking.
     """
+    if config.nlp_mode:
+        if not config.problem_text:
+            raise HTTPException(status_code=400, detail="Missing problem_text for NLP mode.")
+            
+        nlp_result = solve_with_gemini(config.problem_text)
+        if nlp_result.get("status") == "failed":
+            raise HTTPException(status_code=500, detail=nlp_result.get("error", "NLP Failed"))
+            
+        return {
+            "prediction": nlp_result,
+            "metadata": {"mode": "nlp_gemini"}
+        }
+
     workload_path = None
     try:
         # Step 1: Generate workload

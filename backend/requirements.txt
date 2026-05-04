@@ -1,7 +1,9 @@
-fastapi==0.115.0
-uvicorn[standard]==0.30.0
-scikit-learn==1.5.0
-joblib==1.4.0
-numpy==1.26.4
-pandas==2.2.2
-pydantic==2.7.0
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+scikit-learn
+joblib
+numpy
+pandas
+pydantic>=2.7.0
+google-genai
+python-dotenv

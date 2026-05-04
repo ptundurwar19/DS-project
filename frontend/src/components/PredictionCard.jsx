@@ -24,7 +24,7 @@ export default function PredictionCard({ prediction, aiCorrect }) {
       <div className="h-1 bg-gradient-to-r from-brand-500 via-purple-500 to-pink-500" />
 
       <div className="p-8 flex flex-col sm:flex-row items-center justify-between gap-8">
-        {/* Left: AI Pick */}
+        {/* Left: Pick */}
         <div className="flex items-center gap-6">
           <motion.div
             initial={{ scale: 0 }}
@@ -35,7 +35,7 @@ export default function PredictionCard({ prediction, aiCorrect }) {
             {DS_ICONS[winner] || '🧠'}
           </motion.div>
           <div>
-            <p className="text-sm text-gray-400 uppercase tracking-wider font-medium">AI Prediction</p>
+            <p className="text-sm text-gray-400 uppercase tracking-wider font-medium">Prediction</p>
             <h2 className="text-3xl font-bold gradient-text mt-1">
               {DS_NAMES[winner] || winner}
             </h2>
@@ -75,7 +75,7 @@ export default function PredictionCard({ prediction, aiCorrect }) {
             transition={{ delay: 0.8 }}
           >
             <span className={aiCorrect ? 'badge-correct text-base px-4 py-2' : 'badge-incorrect text-base px-4 py-2'}>
-              {aiCorrect ? '✓ AI was Correct' : '✗ AI was Wrong'}
+              {aiCorrect ? '✓ Prediction Correct' : '✗ Prediction Wrong'}
             </span>
           </motion.div>
         </div>

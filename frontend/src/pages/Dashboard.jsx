@@ -5,6 +5,7 @@ import BenchmarkChart from '../components/BenchmarkChart'
 import ParetoChart from '../components/ParetoChart'
 import ExplainPanel from '../components/ExplainPanel'
 import CodeExport from '../components/CodeExport'
+import NLPResults from '../components/NLPResults'
 
 const container = {
   hidden: { opacity: 0 },
@@ -27,15 +28,16 @@ export default function Dashboard({ results }) {
       <div className="flex flex-col items-center justify-center py-32 space-y-6">
         <div className="text-6xl">🧠</div>
         <h2 className="text-2xl font-bold text-white">No Results Yet</h2>
-        <p className="text-gray-400">Run the Oracle first to see your dashboard.</p>
+        <p className="text-gray-400">Run a search first to see your dashboard.</p>
         <button onClick={() => navigate('/')} className="btn-primary">
-          ← Go to Oracle
+          ← Go to Home
         </button>
       </div>
     )
   }
 
   const { prediction, benchmark, features, ai_correct, metadata } = results
+  const isNLPMode = metadata?.mode === 'nlp_gemini'
 
   return (
     <motion.div
@@ -45,48 +47,55 @@ export default function Dashboard({ results }) {
       className="space-y-8"
     >
       {/* Header */}
-      <motion.div variants={item} className="flex items-center justify-between">
+      <motion.div variants={item} className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-white">Results Dashboard</h1>
-          <p className="text-gray-400 mt-1">AI Prediction vs. Ground Truth Verification</p>
+          <p className="text-gray-400 mt-1">
+            {isNLPMode ? 'Natural Language Analysis' : 'Prediction vs. Ground Truth Verification'}
+          </p>
         </div>
-        <button onClick={() => navigate('/')} className="btn-secondary">
+        <button onClick={() => navigate('/')} className="btn-secondary whitespace-nowrap">
           ⚡ New Run
         </button>
       </motion.div>
 
-      {/* Prediction Card */}
-      <motion.div variants={item}>
-        <PredictionCard prediction={prediction} aiCorrect={ai_correct} />
-      </motion.div>
-
-      {/* Charts Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {isNLPMode ? (
+        /* --- NLP NLP UI --- */
         <motion.div variants={item}>
-          <BenchmarkChart benchmark={benchmark} winner={prediction.winner} />
+          <NLPResults prediction={prediction} />
         </motion.div>
-        <motion.div variants={item}>
-          <ParetoChart benchmark={benchmark} winner={prediction.winner} />
-        </motion.div>
-      </div>
+      ) : (
+        /* --- Old Setup (C++ Engine) UI --- */
+        <>
+          <motion.div variants={item}>
+            <PredictionCard prediction={prediction} aiCorrect={ai_correct} />
+          </motion.div>
 
-      {/* Explain Panel */}
-      <motion.div variants={item}>
-        <ExplainPanel prediction={prediction} features={features} />
-      </motion.div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <motion.div variants={item}>
+              <BenchmarkChart benchmark={benchmark} winner={prediction.winner} />
+            </motion.div>
+            <motion.div variants={item}>
+              <ParetoChart benchmark={benchmark} winner={prediction.winner} />
+            </motion.div>
+          </div>
 
-      {/* Code Export */}
-      <motion.div variants={item}>
-        <CodeExport winner={prediction.winner} />
-      </motion.div>
+          <motion.div variants={item}>
+            <ExplainPanel prediction={prediction} features={features} />
+          </motion.div>
 
-      {/* Metadata footer */}
-      {metadata && (
-        <motion.div variants={item} className="glass-card p-4 text-xs text-gray-500 flex items-center justify-between">
-          <span>Engine: {metadata.compiler || 'N/A'}</span>
-          <span>Dataset: {metadata.dataset_size?.toLocaleString() || 'N/A'} operations</span>
-          {metadata.error && <span className="text-amber-400">⚠️ {metadata.error}</span>}
-        </motion.div>
+          <motion.div variants={item}>
+            <CodeExport winner={prediction.winner} />
+          </motion.div>
+
+          {metadata && (
+            <motion.div variants={item} className="glass-card p-4 text-xs text-gray-500 flex items-center justify-between">
+              <span>Engine: {metadata.compiler || 'N/A'}</span>
+              <span>Dataset: {metadata.dataset_size?.toLocaleString() || 'N/A'} operations</span>
+              {metadata.error && <span className="text-amber-400">⚠️ {metadata.error}</span>}
+            </motion.div>
+          )}
+        </>
       )}
     </motion.div>
   )

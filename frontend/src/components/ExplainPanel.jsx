@@ -24,7 +24,7 @@ export default function ExplainPanel({ prediction, features }) {
     <div className="glass-card p-6 space-y-6">
       <div className="flex items-center gap-2">
         <span className="text-xl">💡</span>
-        <h3 className="text-lg font-semibold text-white">Explainable AI — Why This Pick?</h3>
+        <h3 className="text-lg font-semibold text-white">Explainability — Why This Pick?</h3>
       </div>
 
       {/* Natural language explanation */}

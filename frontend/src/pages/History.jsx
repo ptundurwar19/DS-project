@@ -40,7 +40,7 @@ export default function History() {
       {runs.length === 0 ? (
         <div className="glass-card p-16 text-center space-y-4">
           <div className="text-5xl">📜</div>
-          <p className="text-gray-400">No runs yet. Go run the Oracle!</p>
+          <p className="text-gray-400">No runs yet. Go run a search!</p>
         </div>
       ) : (
         <div className="space-y-3">
